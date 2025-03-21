@@ -1,0 +1,164 @@
+import heapq
+import copy
+import pygame
+import time
+
+#tạo Pygame
+pygame.init()
+WIDTH, HEIGHT = 600, 400
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Ring Sorting Game")
+
+#Hàm in trạng thái (text, để debug nếu cần)
+def print_state(state):
+    print("\nCurrent State:")
+    for i, col in enumerate(state):
+        print(f"Column {i+1}: {col}")
+    print("---")
+
+#Hàm vẽ trạng thái bằng Pygame
+def draw_state(screen, state, step_text=""):
+    screen.fill((255, 255, 255))  #Nền trắng
+    colors = {'R': (255, 0, 0), 'B': (0, 0, 255), 'G': (0, 255, 0)}  #Màu sắc
+    col_width = WIDTH // 6  #Chiều rộng mỗi cột
+    
+    #Vẽ các cột
+    for i, col in enumerate(state):
+        x = i * col_width + col_width // 2 - 20
+        pygame.draw.line(screen, (0, 0, 0), (x + 20, 50), (x + 20, 350), 2)  #Thanh dọc của cột
+        
+        #Vẽ các vòng
+        for j, ring in enumerate(col):
+            y = 350 - j * 20 - 20
+            pygame.draw.rect(screen, colors[ring], (x, y, 40, 15))
+    
+    #Hiển thị bước hiện tại
+    font = pygame.font.SysFont(None, 30)
+    text = font.render(step_text, True, (0, 0, 0))
+    screen.blit(text, (10, 10))
+    
+    pygame.display.flip()
+
+#Hàm kiểm tra trạng thái mục tiêu
+def is_goal(state, goal_colors):
+    for i, col in enumerate(state):
+        if col and any(c != goal_colors[i] for c in col):
+            return False
+    return True
+
+#Hàm lấy vòng trên cùng (chỉ lấy một vòng)
+def get_top_ring(col):
+    if not col:
+        return None
+    return col[-1]  #Chỉ lấy một vòng trên cùng
+
+#Hàm heuristic
+def heuristic(state, goal_colors):
+    h = 0
+    for i, col in enumerate(state):
+        if col:
+            h += sum(1 for ring in col if ring != goal_colors[i])
+    return h
+
+#Thuật toán A* (chỉ di chuyển một vòng mỗi bước)
+def a_star(initial_state, goal_colors):
+    open_set = [(0, 0, initial_state, [])]  #(f, g, state, path)
+    closed_set = set()
+    
+    while open_set:
+        f, g, current_state, path = heapq.heappop(open_set)
+        state_tuple = tuple(tuple(col) for col in current_state)
+        
+        if state_tuple in closed_set:
+            continue
+        closed_set.add(state_tuple)
+        
+        if is_goal(current_state, goal_colors):
+            return current_state, path
+        
+        #Sinh các trạng thái con
+        for src in range(6):
+            top_ring = get_top_ring(current_state[src])
+            if not top_ring:
+                continue
+            for dest in range(6):
+                if src == dest:
+                    continue
+                if not current_state[dest] or current_state[dest][-1] == top_ring:
+                    new_state = copy.deepcopy(current_state)
+                    new_state[dest].append(new_state[src].pop())  # Chỉ di chuyển một vòng
+                    new_g = g + 1
+                    new_h = heuristic(new_state, goal_colors)
+                    new_f = new_g + new_h
+                    new_path = path + [(src, dest)]
+                    heapq.heappush(open_set, (new_f, new_g, new_state, new_path))
+    
+    return None, None  #Không tìm thấy đường đi
+
+#Hàm tái hiện các bước di chuyển với Pygame
+def replay_steps(initial_state, path, display_text=True):
+    current_state = copy.deepcopy(initial_state)
+    if display_text:
+        draw_state(screen, current_state, "Initial State")  #Trạng thái ban đầu
+        pygame.time.wait(2000)  #Chờ 2 giây để xem trạng thái ban đầu
+    
+    steps = []  #Lưu các bước để hiển thị lại sau
+    for step, (src, dest) in enumerate(path, 1):
+        top_ring = get_top_ring(current_state[src])
+        if top_ring:
+            current_state[dest].append(current_state[src].pop())  #Di chuyển một vòng
+            step_text = f"Step {step}: Column {src+1} -> Column {dest+1}"  #Bước di chuyển
+            steps.append(step_text)  #Lưu bước vào danh sách
+            if display_text:
+                draw_state(screen, current_state, step_text)
+                pygame.time.wait(1000)  #Chờ 1 giây giữa các bước
+    return steps  #Trả về danh sách các bước
+
+# Hàm hiển thị lại các bước
+def display_steps(steps):
+    print("\nAll Steps:")
+    for step in steps:
+        print(step)
+
+# Hàm chính
+def main():
+    initial_state = [
+        ['R', 'B', 'G', 'R'],
+        ['G', 'R', 'B', 'G'],
+        ['B', 'G', 'R', 'B'],
+        ['R', 'G', 'B', 'R'],
+        [],
+        []
+    ]
+    goal_colors = ['R', 'B', 'G', '', '', '']  # Mục tiêu: cột 1 đỏ, cột 2 xanh dương, cột 3 xanh lá
+
+    # Hiển thị trạng thái ban đầu
+    print("Initial State:")
+    print_state(initial_state)
+    draw_state(screen, initial_state, "Initial State")
+
+    # Chạy thuật toán A*
+    final_state, path = a_star(initial_state, goal_colors)
+    
+    running = True
+    if path:
+        print(f"Solution found with {len(path)} steps!")  # Thông báo tìm thấy giải pháp
+        steps = replay_steps(initial_state, path)  # Chạy lần đầu và lưu các bước
+        draw_state(screen, final_state, "Completed!")  # Trạng thái hoàn thành
+        
+        # Hiển thị lại các bước sau khi hoàn thành
+        display_steps(steps)
+    else:
+        print("No solution found!")  # Không tìm thấy giải pháp
+        draw_state(screen, initial_state, "No solution found!")
+
+    # Vòng lặp để giữ cửa sổ mở
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+    
+    pygame.quit()
+
+if __name__ == "__main__":
+    main()
